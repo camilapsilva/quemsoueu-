@@ -1,0 +1,12 @@
+SITE DE CALIBRAÇÃO — VERSÃO CONECTADA
+
+1. Extraia o ZIP.
+2. Suba somente index.html na raiz do repositório público do GitHub.
+3. No GitHub, Settings > Pages > Deploy from a branch > main > / (root).
+4. Faça um envio de teste. Confirme na aba Respostas da sua planilha Google.
+5. Compartilhe o link GitHub Pages com as cinco meninas.
+
+A URL do Apps Script já está incluída no index.html. Não é preciso editar nada.
+A planilha e o código Code.gs NÃO devem ser publicados no GitHub.
+As participantes devem apenas escolher o nome, responder e clicar Enviar.
+OBS: não há autenticação, qualquer pessoa com link pode se identificar usando um dos nomes.
