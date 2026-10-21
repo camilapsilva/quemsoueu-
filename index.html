@@ -25,30 +25,25 @@ app.innerHTML=`<div class="eyebrow">QUASE LÁ ✨</div><h1>Pronto, ${esc(name)}!
 document.getElementById('back').onclick=()=>{phase=2;idx=9;render()};
 document.getElementById('send').onclick=async()=>{
 const btn=document.getElementById('send'),status=document.getElementById('status');
-if(!ENDPOINT.startsWith('https://script.google.com/macros/s/')){status.textContent='Este site ainda não foi conectado à planilha. Peça à organizadora para configurar o endereço de recebimento.';return;}
-btn.disabled=true;btn.textContent='Enviando…';status.textContent='Enviando e conferindo o registro na planilha…';
-const id=(crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+'-'+Math.random().toString(36).slice(2));
-try{
-await fetch(ENDPOINT,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({...payload,id})});
-let verified=false;
-for(let attempt=0;attempt<4;attempt++){
-await new Promise(r=>setTimeout(r,600+attempt*700));
-try{const confirmation=await verifyReceipt(id);if(confirmation&&confirmation.saved===true){verified=true;break}}catch(_e){}
-}
-if(!verified)throw new Error('Não foi possível confirmar o registro.');
-app.innerHTML=`<div class="eyebrow">TUDO CERTO ✨</div><h1>Obrigada, ${esc(name)}! 💖</h1><p class="sub">Suas respostas foram <b>salvas e confirmadas</b> na planilha. Você terminou! Não precisa enviar nada para ninguém.</p>`;
-}catch(err){status.textContent='Não conseguimos confirmar que suas respostas foram salvas. Verifique a internet e tente novamente. Se persistir, avise a organizadora.';btn.disabled=false;btn.textContent='Tentar enviar novamente';}
+btn.disabled=true;btn.textContent='Enviando…';status.textContent='Salvando respostas na planilha…';
+// ID fixo durante tentativas: não duplica a mesma resposta quando a usuária clica de novo.
+if(!window.quizSubmissionId) window.quizSubmissionId = 'q'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,12);
+try {
+const result=await sendToSheet({id:window.quizSubmissionId,participante:name,first,second,peers:others});
+if(!result || result.saved!==true) throw new Error((result&&result.error)||'Não houve confirmação de gravação.');
+app.innerHTML=`<div class="eyebrow">TUDO CERTO ✨</div><h1>Obrigada, ${esc(name)}! 💖</h1><p class="sub">Suas respostas foram <b>salvas na planilha</b>. Você terminou! Não precisa enviar nada para ninguém.</p>`;
+}catch(err){status.textContent='Não foi possível salvar: '+String(err.message||err)+'. Tente novamente. Se persistir, avise a organizadora.';btn.disabled=false;btn.textContent='Tentar enviar novamente';}
 };return;}
-function verifyReceipt(id){return new Promise((resolve,reject)=>{
+function sendToSheet(data){return new Promise((resolve,reject)=>{
 const callback='quizAck_'+Math.random().toString(36).slice(2);
-let finished=false;const script=document.createElement('script');
-const timer=setTimeout(()=>done(null,new Error('Sem confirmação')),7000);
-function done(data,error){if(finished)return;finished=true;clearTimeout(timer);script.remove();delete window[callback];if(error)reject(error);else resolve(data)}
-window[callback]=data=>done(data,null);
-script.onerror=()=>done(null,new Error('Verificação indisponível'));
-script.src=ENDPOINT+'?check='+encodeURIComponent(id)+'&callback='+callback+'&t='+Date.now();document.head.appendChild(script);
+const script=document.createElement('script');let finished=false;
+const timeout=setTimeout(()=>done(null,new Error('Sem resposta do Apps Script. Verifique a implantação e o acesso público.')),15000);
+function done(response,error){if(finished)return;finished=true;clearTimeout(timeout);script.remove();delete window[callback];if(error)reject(error);else resolve(response)}
+window[callback]=response=>done(response,null);
+script.onerror=()=>done(null,new Error('Falha ao acessar o Apps Script. Confira se publicou uma NOVA VERSÃO da implantação.'));
+const p=new URLSearchParams({action:'save',callback,id:data.id,participante:data.participante,first:data.first.join(','),second:data.second.join(','),peers:data.peers.map(n=>friends.indexOf(n)).join(','),t:String(Date.now())});
+script.src=ENDPOINT+'?'+p.toString();document.head.appendChild(script);
 })}
-
 let self=phase===1,question=self?Q[idx][0]:peer[idx],items=self?Q[idx][1].map(x=>x[0]):friends.filter(n=>n!==name);let chosen=self?first[idx]:items.indexOf(others[idx]);app.innerHTML=`<div class="eyebrow">ETAPA ${phase} DE 2 · ${self?'COMO VOCÊ SE VÊ':'COMO VOCÊ VÊ SUAS AMIGAS'}</div><div class="bar"><div style="width:${((phase-1)*10+idx)/20*100}%"></div></div><p class="hint">Pergunta ${idx+1} de 10 ${self?'· escolha a que MAIS combina e depois a segunda':'· escolha UMA amiga, sem incluir você'}</p><h2>${esc(question)}</h2><div id="choices">${items.map((t,i)=>`<button type="button" class="option ${chosen===i?'selected':''}" data-opt="${i}"><span class="letter">${self?'ABCDE'[i]:'✦'}</span>${esc(t)}</button>`).join('')}</div>${self?`<p class="hint"><b>Segunda opção mais parecida com você:</b></p><div id="runner">${items.map((t,i)=>`<button type="button" class="option ${second[idx]===i?'selected':''}" data-second="${i}" ${first[idx]===i?'disabled':''}><span class="letter">${'ABCDE'[i]}</span>${esc(t)}</button>`).join('')}</div>`:''}<div class="row"><button type="button" class="btn secondary" id="back" ${idx===0&&phase===1?'disabled':''}>← Voltar</button><button type="button" class="btn" id="next" ${self?(first[idx]===null||second[idx]===null):others[idx]===null?'disabled':''}>${phase===2&&idx===9?'Concluir 💌':'Próxima →'}</button></div>`;
 document.querySelectorAll('[data-opt]').forEach(b=>b.onclick=()=>{let i=Number(b.dataset.opt);if(self){first[idx]=i;if(second[idx]===i)second[idx]=null}else others[idx]=items[i];render()});document.querySelectorAll('[data-second]').forEach(b=>b.onclick=()=>{second[idx]=Number(b.dataset.second);render()});document.getElementById('back').onclick=()=>{if(idx>0)idx--;else if(phase===2){phase=1;idx=9}render()};document.getElementById('next').onclick=()=>{if(self&&(first[idx]===null||second[idx]===null))return;if(!self&&others[idx]===null)return;if(idx<9)idx++;else{phase++;idx=0}render();window.scrollTo(0,0)};}
 render();
